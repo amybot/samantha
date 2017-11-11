@@ -1,0 +1,2 @@
+defmodule Samantha do
+end
