@@ -58,21 +58,26 @@ defmodule Samantha.Gateway do
   ###############
 
   def start_link(state) do
+    Logger.info "Starting gateway connect!"
     gateway = get_gateway_url()
     Logger.info "Connecting to: #{gateway}"
-    WebSockex.start(gateway, __MODULE__, state)
+    WebSockex.start(gateway, __MODULE__, state, [async: true])
   end
 
   def init(state) do
-    new_state = state
-                |> Map.put(:client_pid, self())
-    Logger.info "state: #{inspect new_state}"
-    {:once, new_state}
+    Logger.info "init?"
+#    new_state = state
+#                |> Map.put(:client_pid, self())
+    {:once, state}
   end
 
-  def handle_connect(conn, state) do
+  def handle_connect(_conn, state) do
     Logger.info "Connected to gateway"
-    {:ok, state}
+    unless is_nil state[:session_id] do
+      Logger.info "We have a session; expect OP 10 -> OP 6."
+    end
+    new_state = state |> Map.put(:client_pid, self())
+    {:ok, new_state}
   end
 
   def handle_frame({:binary, msg}, state) do
@@ -82,6 +87,8 @@ defmodule Samantha.Gateway do
     case res do
       :reply -> {:reply, reply, new_state}
       :noreply -> {:ok, new_state}
+      # Just immediately die
+      :terminate -> {:close, new_state}
     end 
   end
 
@@ -90,25 +97,18 @@ defmodule Samantha.Gateway do
     {:ok, state}
   end
 
-  def handle_disconnect(disconnect_map, state) do
-    Logger.info "Got disconnect: #{inspect disconnect_map}"
+  def handle_disconnect(_disconnect_map, state) do
+    Logger.info "Disconnected from websocket!"
+    Logger.info "Killing heartbeat: #{inspect state[:heartbeat_pid]}"
+    Process.exit(state[:heartbeat_pid], :kill)
+    Logger.info "Done! Please start a new gateway link."
+    send state[:parent], :ws_exit
     {:ok, state}
   end
 
-  ################
-  # External API #
-  ################
-
-  def handle_info({:heartbeat, interval}, state) do
-    unless is_nil interval do
-      payload = binary_payload @op_heartbeat, state[:seq]
-      Logger.info "Sending heartbeat (interval: #{inspect interval}, seq: #{inspect state[:seq]})"
-      Process.send_after self(), {:heartbeat, interval}, interval
-      {:reply, {:binary, payload}, state}
-    else
-      Logger.warn "No interval!?"
-      {:ok, state}
-    end
+  def terminate(reason, _state) do
+    Logger.info "Websocket terminating: #{inspect reason}"
+    :ok
   end
 
   #########################
@@ -119,38 +119,44 @@ defmodule Samantha.Gateway do
   def handle_op(@op_hello, payload, state) do
     Logger.info "Hello!!"
 
+    d = payload[:d]
+    # Spawn heartbeat worker and start heartbeat
+    {:ok, heartbeat_pid} = Samantha.Heartbeat.start_link self(), state[:seq]
+    send heartbeat_pid, {:heartbeat, @op_heartbeat, d[:heartbeat_interval]}
+    heartbeat_state = state |> Map.put(:heartbeat_pid, heartbeat_pid)
+
     # Handle RESUME if we have a session already
     if is_nil state[:session_id] do
       # When we get HELLO, we need to start heartbeating immediately
-      d = payload[:d]
       Logger.info "Hello: #{inspect d}"
-      new_state = state
+      new_state = heartbeat_state
                   |> Map.put(:trace, d[:trace])
                   |> Map.put(:interval, d[:heartbeat_interval])
                   |> Map.put(:seq, nil)
-
-      send self(), {:heartbeat, d[:heartbeat_interval]}
       Logger.info "Welcome to Discord!"
       {:reply, identify(new_state), new_state}
     else
       # We have a session ID, so we should RESUME over it
       Logger.info "Resuming session..."
 
-      {:reply, resume(state), state}
+      {:reply, resume(heartbeat_state), heartbeat_state}
     end
   end
 
   def handle_op(@op_reconnect, _payload, state) do
     # When we get a :reconnect, we need to do a FULL reconnect
     #       {:reconnect, new_conn, new_module_state} ->
-    Logger.info "Got :reconnect!"
-    {:reconnect, state}
+    Logger.info "Got :reconnect, killing WS to start over."
+    {:terminate, nil, state}
   end
 
   def handle_op(@op_dispatch, payload, state) do
     Logger.info "Got :dispatch t: #{inspect payload[:t]}"
     {:ok, new_state} = handle_event(payload[:t], payload[:d], state)
-    {:noreply, nil, %{new_state | seq: payload[:s]}}
+    # Update heartbeat monitor
+    Samantha.Heartbeat.update_seq state[:heartbeat_pid], payload[:s]
+    send state[:parent], {:seq, payload[:s]}
+    {:noreply, nil, new_state}
   end
 
   def handle_op(@op_invalid_session, payload, state) do
@@ -172,7 +178,7 @@ defmodule Samantha.Gateway do
   # Generic op handling
   def handle_op(opcode, payload, state) do
     Logger.warn "Got unhandled op: #{inspect opcode} (#{inspect @opcodes[opcode]})" 
-          <> "with payload: #{inspect payload}"
+          <> " with payload: #{inspect payload}"
     {:noreply, nil, state}
   end
 
@@ -191,6 +197,7 @@ defmodule Samantha.Gateway do
                     MapSet.new([data[:_trace]])
                   )))
     Logger.info "All traces: #{inspect new_state[:trace]}"
+    send state[:parent], {:session, data[:session_id]}
     {:ok, new_state}
   end
 
@@ -222,13 +229,19 @@ defmodule Samantha.Gateway do
   end
 
   defp resume(state) do
-    Logger.info "Resuming..."
+    seq = GenServer.call state[:parent], :seq
+    Logger.info "Resuming from seq #{inspect seq}"
     payload = binary_payload @op_resume, %{
-      token: state[:token],
-      session_id: state[:session_id],
-      seq: state[:seq]
+      "session_id" => state[:session_id],
+      "token" => state[:token],
+      "seq" => seq,
+      "properties" => %{
+        "$os" => "BEAM",
+        "$browser" => "samantha",
+        "$device" => "samantha"
+      },
+      "compress" => false,
     }
-    Logger.info "Done!"
     {:binary, payload}
   end
 end
