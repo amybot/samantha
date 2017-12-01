@@ -12,6 +12,8 @@ defmodule Samantha.Shard do
       seq: nil,
       session_id: nil,
       token: opts[:token],
+      shard_id: opts[:shard_id],
+      shard_count: opts[:shard_count],
     }
     Logger.info "Started shard."
     {:ok, state}
@@ -32,9 +34,11 @@ defmodule Samantha.Shard do
         token: state[:token],
         parent: self(),
         session_id: state[:session_id],
+        shard_id: state[:shard_id],
+        shard_count: state[:shard_count],
       }
 
-      {:ok, pid} = Samantha.Gateway.start_link initial_state
+      {:ok, pid} = Samantha.Discord.start_link initial_state
       ref = Process.monitor pid
       Logger.info "Started WS: pid #{inspect pid}, ref #{inspect ref}"
       {:noreply, %{state | ws_pid: pid}}
@@ -45,12 +49,12 @@ defmodule Samantha.Shard do
   end
 
   def handle_info({:seq, num}, state) do
-    Logger.info "New sequence number: #{inspect num}"
+    Logger.debug "New sequence number: #{inspect num}"
     {:noreply, %{state | seq: num}}
   end
 
   def handle_info({:session, session_id}, state) do
-    Logger.info "New session!"
+    Logger.info "Got a new session."
     {:noreply, %{state | session_id: session_id}}
   end
 
@@ -65,9 +69,9 @@ defmodule Samantha.Shard do
   end
 
   def handle_info({:DOWN, ref, :process, pid, reason}, state) do
-    Logger.info "Got :DOWN: "
-    Logger.info "pid #{inspect pid}. ref #{inspect ref}"
-    Logger.info "reason: #{inspect reason}"
+    Logger.debug "Got :DOWN: "
+    Logger.debug "pid #{inspect pid}. ref #{inspect ref}"
+    Logger.debug "reason: #{inspect reason}"
     if pid == state[:ws_pid] do
       Logger.info "WS died, let's restart it."
       Process.send_after self(), :gateway_connect, 2500

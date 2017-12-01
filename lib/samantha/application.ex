@@ -11,7 +11,7 @@ defmodule Samantha.Application do
 
     opts = [strategy: :one_for_one, name: Samantha.Supervisor]
     {:ok, sup_pid} = Supervisor.start_link(children, opts)
-    {:ok, shard_pid} = Samantha.InternalSupervisor.start_child worker(Samantha.Shard, [%{token: System.get_env("BOT_TOKEN")}], name: Samantha.Shard)
+    {:ok, shard_pid} = Samantha.InternalSupervisor.start_child worker(Samantha.Shard, [%{token: System.get_env("BOT_TOKEN"), shard_id: 0, shard_count: 1}], name: Samantha.Shard)
 
     :timer.sleep 1000
     Logger.info "!"

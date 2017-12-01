@@ -1,4 +1,4 @@
-defmodule Samantha.Gateway do
+defmodule Samantha.Discord do
   use WebSockex
 
   import Samantha.Util
@@ -66,17 +66,21 @@ defmodule Samantha.Gateway do
 
   def init(state) do
     Logger.info "init?"
-#    new_state = state
-#                |> Map.put(:client_pid, self())
     {:once, state}
   end
 
-  def handle_connect(_conn, state) do
+  def handle_connect(conn, state) do
     Logger.info "Connected to gateway"
     unless is_nil state[:session_id] do
       Logger.info "We have a session; expect OP 10 -> OP 6."
     end
-    new_state = state |> Map.put(:client_pid, self())
+    headers = Enum.into conn.resp_headers, %{}
+    ray = headers["Cf-Ray"]
+    server = headers[:Server]
+    Logger.info "Connected to #{server} ray #{ray}"
+    new_state = state 
+                |> Map.put(:client_pid, self())
+                |> Map.put(:cf_ray, ray)
     {:ok, new_state}
   end
 
@@ -97,8 +101,12 @@ defmodule Samantha.Gateway do
     {:ok, state}
   end
 
-  def handle_disconnect(_disconnect_map, state) do
+  def handle_disconnect(disconnect_map, state) do
     Logger.info "Disconnected from websocket!"
+    Logger.debug "Disconnect info: #{inspect disconnect_map}"
+    unless is_nil disconnect_map[:reason] do
+      Logger.warn "Disconnect reason: #{inspect disconnect_map[:reason]}"
+    end
     Logger.info "Killing heartbeat: #{inspect state[:heartbeat_pid]}"
     Process.exit(state[:heartbeat_pid], :kill)
     Logger.info "Done! Please start a new gateway link."
@@ -145,13 +153,12 @@ defmodule Samantha.Gateway do
 
   def handle_op(@op_reconnect, _payload, state) do
     # When we get a :reconnect, we need to do a FULL reconnect
-    #       {:reconnect, new_conn, new_module_state} ->
     Logger.info "Got :reconnect, killing WS to start over."
     {:terminate, nil, state}
   end
 
   def handle_op(@op_dispatch, payload, state) do
-    Logger.info "Got :dispatch t: #{inspect payload[:t]}"
+    #Logger.info "Got :dispatch t: #{inspect payload[:t]}"
     {:ok, new_state} = handle_event(payload[:t], payload[:d], state)
     # Update heartbeat monitor
     Samantha.Heartbeat.update_seq state[:heartbeat_pid], payload[:s]
@@ -177,7 +184,7 @@ defmodule Samantha.Gateway do
 
   # Generic op handling
   def handle_op(opcode, payload, state) do
-    Logger.warn "Got unhandled op: #{inspect opcode} (#{inspect @opcodes[opcode]})" 
+    Logger.debug "Got unhandled op: #{inspect opcode} (#{inspect @opcodes[opcode]})" 
           <> " with payload: #{inspect payload}"
     {:noreply, nil, state}
   end
@@ -190,19 +197,24 @@ defmodule Samantha.Gateway do
     Logger.info "Ready: Gateway protocol: #{inspect data[:v]}"
     Logger.info "Ready: We are: #{inspect data[:user]}"
     Logger.info "Ready: _trace: #{inspect data[:_trace]}"
+    Logger.info "Ready: We are in #{inspect length(data[:guilds])} guilds."
     new_state = state
                 |> Map.put(:session_id, data[:session_id])
-                |> Map.put(:trace, MapSet.to_list(MapSet.union(
-                    MapSet.new([state[:trace]]),
-                    MapSet.new([data[:_trace]])
-                  )))
+                |> Map.put(:trace, data[:_trace])
     Logger.info "All traces: #{inspect new_state[:trace]}"
     send state[:parent], {:session, data[:session_id]}
+    new_state = state
+                |> Map.put(:user, data[:user])
     {:ok, new_state}
   end
 
-  def handle_event(_event, _data, state) do
-    # Logger.warn "Got unhandled event: #{inspect event} with payload #{inspect data}"
+  def handle_event(:RESUMED, data, state) do
+    Logger.info "Resumed with #{inspect data}"
+    {:ok, %{state | trace: data[:_trace]}}
+  end
+
+  def handle_event(event, data, state) do
+    Logger.debug "Got unhandled event: #{inspect event} with payload #{inspect data}"
     {:ok, state}
   end
 
@@ -221,7 +233,7 @@ defmodule Samantha.Gateway do
       },
       "compress" => false,
       "large_threshold" => 250,
-      # TODO: shard
+      "shard" => [state[:shard_id], state[:shard_count]],
     }
     payload = binary_payload @op_identify, data
     Logger.info "Done!"
@@ -241,6 +253,7 @@ defmodule Samantha.Gateway do
         "$device" => "samantha"
       },
       "compress" => false,
+      "shard" => [state[:shard_id], state[:shard_count]],
     }
     {:binary, payload}
   end

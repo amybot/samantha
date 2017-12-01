@@ -22,10 +22,10 @@ defmodule Samantha.Mixfile do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:websockex, github: "queer/websockex"}, #"~> 0.4.0"},
+      {:websockex, github: "queer/websockex"},
       {:httpoison, "~> 0.13"},
       {:poison, "~> 3.1"},
-      #{:redix, ">= 0.0.0"},
+      {:lace, github: "queer/lace"},
     ]
   end
 end
