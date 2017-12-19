@@ -59,8 +59,8 @@ defmodule Samantha.Shard do
 
   def handle_info({:shard_heartbeat, shard_id}, state) do
     shard_payload = %{
-      "bot_name"    => System.get_env("BOT_NAME"),
-      "shard_id" => :shard_id,
+      "bot_name" => System.get_env("BOT_NAME"),
+      "shard_id" => shard_id,
     }
     HTTPoison.post! System.get_env("CONNECTOR_URL") <> "/heartbeat", (shard_payload |> Poison.encode!), [{"Content-Type", "application/json"}]
     # Heartbeat every ~second
