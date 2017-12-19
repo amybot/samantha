@@ -32,7 +32,7 @@ defmodule Samantha.Shard do
     Logger.info "Sharding with #{System.get_env("CONNECTOR_URL") <> "/shard"}"
     {:ok, payload} = Poison.encode shard_payload
     Logger.info "Payload (#{payload})"
-    response = HTTPoison.post!(System.get_env("CONNECTOR_URL") <> "/shard", payload)
+    response = HTTPoison.post!(System.get_env("CONNECTOR_URL") <> "/shard", payload, [{"Content-Type", "application/json"}])
     Logger.info "Got response: #{inspect response.body}"
     shard_res = response.body |> Poison.decode!
     case shard_res["can_connect"] do
@@ -62,7 +62,7 @@ defmodule Samantha.Shard do
       "bot_name"    => System.get_env("BOT_NAME"),
       "shard_id" => state[:shard_id],
     }
-    HTTPoison.post! System.get_env("CONNECTOR_URL") <> "/heartbeat", shard_payload |> Poison.encode!
+    HTTPoison.post! System.get_env("CONNECTOR_URL") <> "/heartbeat", (shard_payload |> Poison.encode!), [{"Content-Type", "application/json"}]
     # Heartbeat every ~second
     Process.send_after self(), :shard_heartbeat, 1000
     {:noreply, state}
