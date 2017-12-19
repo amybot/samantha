@@ -15,11 +15,13 @@ defmodule Samantha.Application do
     opts = [strategy: :one_for_one, name: Samantha.Supervisor]
     # Start the "real" supervisor
     app_sup = Supervisor.start_link(children, opts)
+    :timer.sleep 1000
+    Logger.info "Starting up!"
     # Get the shard count
     shard_count = (HTTPoison.get! "http://rancher-metadata/2015-12-19/self/service/scale").body |> String.to_integer
     # Start the shard worker under our dynamic supervisor
     {:ok, shard_pid} = Samantha.InternalSupervisor.start_child worker(Samantha.Shard, [%{token: System.get_env("BOT_TOKEN"), shard_count: shard_count}], name: Samantha.Shard)
-    Logger.warn "Shard booted!"
+    Logger.info "Shard booted!"
     #
     #Logger.info "Done?"
     app_sup
