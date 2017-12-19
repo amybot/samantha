@@ -32,7 +32,7 @@ defmodule Samantha.Shard do
       }
       Logger.info "Sharding with #{inspect System.get_env("CONNECTOR_URL")}/shard"
       Logger.info "Payload (#{inspect shard_payload})"
-      payload = Poison.encode! shard_payload
+      {:ok, payload} = Poison.encode shard_payload
       Logger.info "Encoded payload (#{payload})"
       response = HTTPoison.post!(System.get_env("CONNECTOR_URL") <> "/shard", payload)
       shard_res = response.body |> Poison.decode!
