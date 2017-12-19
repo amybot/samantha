@@ -9,7 +9,6 @@ WORKDIR /app
 RUN apk update
 RUN apk add git
 
-
 COPY . /app
 
 RUN mix deps.get

@@ -2,20 +2,10 @@
 
 **TODO: Add description**
 
-## Installation
+## Configuration
 
-If [available in Hex](https://hex.pm/docs/publish), the package can be installed
-by adding `samantha` to your list of dependencies in `mix.exs`:
-
-```elixir
-def deps do
-  [
-    {:samantha, "~> 0.1.0"}
-  ]
-end
+```Bash
+BOT_NAME="unique-name-without-spaces"
+BOT_TOKEN="your token here"
+CONNECTOR_URL="http://your.shard.connector/"
 ```
-
-Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_doc)
-and published on [HexDocs](https://hexdocs.pm). Once published, the docs can
-be found at [https://hexdocs.pm/samantha](https://hexdocs.pm/samantha).
-
