@@ -57,10 +57,10 @@ defmodule Samantha.Shard do
     {:noreply, %{state | session_id: session_id}}
   end
 
-  def handle_info(:shard_heartbeat, state) do
+  def handle_info({:shard_heartbeat, shard_id}, state) do
     shard_payload = %{
       "bot_name"    => System.get_env("BOT_NAME"),
-      "shard_id" => state[:shard_id],
+      "shard_id" => :shard_id,
     }
     HTTPoison.post! System.get_env("CONNECTOR_URL") <> "/heartbeat", (shard_payload |> Poison.encode!), [{"Content-Type", "application/json"}]
     # Heartbeat every ~second
@@ -92,7 +92,7 @@ defmodule Samantha.Shard do
       ref = Process.monitor pid
       Logger.info "Started WS: pid #{inspect pid}, ref #{inspect ref}"
       # Start heartbeating
-      Process.send_after self(), :shard_heartbeat, 2000
+      send self(), {:shard_heartbeat, shard_id}
       {:noreply, %{state | ws_pid: pid, shard_id: shard_id}}
     else
       Logger.warn "Got :gateway_connect when already connected, ignoring..."
