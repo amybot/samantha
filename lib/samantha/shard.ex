@@ -7,7 +7,6 @@ defmodule Samantha.Shard do
   end
 
   def init(opts) do
-    Logger.info "opts: #{inspect opts}"
     state = %{
       ws_pid: nil,
       seq: nil,
@@ -16,7 +15,6 @@ defmodule Samantha.Shard do
       shard_id: nil,
       shard_count: opts[:shard_count],
     }
-    Logger.info "Started shard with #{inspect state[:shard_count]}(#{inspect opts[:shard_count]}) shards"
     {:ok, state}
   end
 
