@@ -33,6 +33,7 @@ defmodule Samantha.Shard do
     {:ok, payload} = Poison.encode shard_payload
     Logger.info "Payload (#{payload})"
     response = HTTPoison.post!(System.get_env("CONNECTOR_URL") <> "/shard", payload)
+    Logger.info "Got response: #{inspect response.body}"
     shard_res = response.body |> Poison.decode!
     case shard_res["can_connect"] do
       true -> 
