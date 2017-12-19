@@ -102,7 +102,9 @@ defmodule Samantha.Shard do
   end
 
   def handle_info(:ws_exit, state) do
-    Process.exit state[:ws_pid], :kill
+    unless is_nil state[:ws_pid] do
+      Process.exit state[:ws_pid], :kill
+    end
     {:noreply, state}
   end
 
