@@ -21,7 +21,7 @@ defmodule Samantha.Heartbeat do
     import Samantha.Util
     unless is_nil interval do
       payload = binary_payload op, state[:seq]
-      Logger.info "Sending heartbeat (interval: #{inspect interval}, seq: #{inspect state[:seq]})"
+      Logger.debug "Sending heartbeat (interval: #{inspect interval}, seq: #{inspect state[:seq]})"
       Process.send_after self(), {:heartbeat, op, interval}, interval
       WebSockex.send_frame state[:parent_pid], {:binary, payload}
     else
