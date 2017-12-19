@@ -30,7 +30,7 @@ defmodule Samantha.Shard do
       "bot_name"    => System.get_env("BOT_NAME"),
       "shard_count" => state[:shard_count],
     }
-    Logger.info "Sending shard payload..."
+    Logger.info "Sending shard payload (#{Poison.encode! shard_payload}) to #{inspect System.get_env("CONNECTOR_URL")}/shard..."
     response = HTTPoison.post!(System.get_env("CONNECTOR_URL") <> "/shard", Poison.encode!(shard_payload))
     shard_res = response.body |> Poison.decode!
     case shard_res["can_connect"] do
