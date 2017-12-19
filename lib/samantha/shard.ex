@@ -23,36 +23,25 @@ defmodule Samantha.Shard do
   end
 
   def handle_info({:try_connect, tries}, state) do
-    try do
-      Logger.info "Connecting (attempt #{inspect tries}) with shard count #{inspect state[:shard_count]}..."
-      # Try to get a valid "token" from the shard connector
-      shard_payload = %{
-        "bot_name"    => System.get_env("BOT_NAME"),
-        "shard_count" => state[:shard_count],
-      }
-      Logger.info "Sharding with #{inspect System.get_env("CONNECTOR_URL")}/shard"
-      Logger.info "Payload (#{inspect shard_payload})"
-      {:ok, payload} = Poison.encode shard_payload
-      Logger.info "Encoded payload (#{payload})"
-      response = HTTPoison.post!(System.get_env("CONNECTOR_URL") <> "/shard", payload)
-      shard_res = response.body |> Poison.decode!
-      case shard_res["can_connect"] do
-        true -> 
-          send self(), {:gateway_connect, shard_res["shard_id"]}
-          {:noreply, state}
-        false -> 
-          # Can't connect, try again in 1s
-          Logger.info "Unable to connect, backing off and retrying..."
-          Process.send_after self(), {:try_connect, tries + 1}, 1000
-          {:noreply, state}
-      end
-    rescue
-      e -> 
-        Logger.warn "Got error: #{inspect e}"
+    Logger.info "Connecting (attempt #{inspect tries}) with shard count #{inspect state[:shard_count]}..."
+    # Try to get a valid "token" from the shard connector
+    shard_payload = %{
+      "bot_name"    => System.get_env("BOT_NAME"),
+      "shard_count" => state[:shard_count],
+    }
+    Logger.info "Sharding with #{inspect System.get_env("CONNECTOR_URL")}/shard"
+    {:ok, payload} = Poison.encode shard_payload
+    Logger.info "Payload (#{payload})"
+    response = HTTPoison.post!(System.get_env("CONNECTOR_URL") <> "/shard", payload)
+    shard_res = response.body |> Poison.decode!
+    case shard_res["can_connect"] do
+      true -> 
+        send self(), {:gateway_connect, shard_res["shard_id"]}
         {:noreply, state}
-    catch
-      e -> 
-        Logger.warn "Got error: #{inspect e}"
+      false -> 
+        # Can't connect, try again in 1s
+        Logger.info "Unable to connect, backing off and retrying..."
+        Process.send_after self(), {:try_connect, tries + 1}, 1000
         {:noreply, state}
     end
   end
