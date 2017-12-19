@@ -7,6 +7,7 @@ defmodule Samantha.Shard do
   end
 
   def init(opts) do
+    Logger.info "opts: #{inspect opts}"
     state = %{
       ws_pid: nil,
       seq: nil,
