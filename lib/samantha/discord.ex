@@ -176,8 +176,8 @@ defmodule Samantha.Discord do
       {:reply, resume(state), state}
     else
       # We're not able to resume, drop the session and start over
-      Logger.info "Can't resume, backing off 5s..."
-      :timer.sleep 5000
+      Logger.info "Can't resume, backing off 6s..."
+      :timer.sleep 6000
       {:reply, identify(state), state}
     end
   end
