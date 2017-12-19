@@ -223,7 +223,7 @@ defmodule Samantha.Discord do
   ###########
 
   defp identify(state) do
-    Logger.info "Identifying..."
+    Logger.info "Identifying as #{inspect [state[:shard_id], state[:shard_count]]}..."
     data = %{
       "token" => state[:token],
       "properties" => %{
