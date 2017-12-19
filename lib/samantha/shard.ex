@@ -23,17 +23,19 @@ defmodule Samantha.Shard do
   end
 
   def handle_info({:try_connect, tries}, state) do
-    Logger.info "Connecting (attempt #{inspect tries}) with shard count #{inspect state[:shard_count]}..."
+    if tries == 1 do
+      Logger.info "Sharding with #{System.get_env("CONNECTOR_URL") <> "/shard"}"
+    end
+    Logger.debug "Connecting (attempt #{inspect tries}) with shard count #{inspect state[:shard_count]}..."
     # Try to get a valid "token" from the shard connector
     shard_payload = %{
       "bot_name"    => System.get_env("BOT_NAME"),
       "shard_count" => state[:shard_count],
     }
-    Logger.info "Sharding with #{System.get_env("CONNECTOR_URL") <> "/shard"}"
     {:ok, payload} = Poison.encode shard_payload
-    Logger.info "Payload (#{payload})"
+    Logger.debug "Payload (#{payload})"
     response = HTTPoison.post!(System.get_env("CONNECTOR_URL") <> "/shard", payload, [{"Content-Type", "application/json"}])
-    Logger.info "Got response: #{inspect response.body}"
+    Logger.debug "Got response: #{inspect response.body}"
     shard_res = response.body |> Poison.decode!
     case shard_res["can_connect"] do
       true -> 
@@ -41,7 +43,7 @@ defmodule Samantha.Shard do
         {:noreply, state}
       false -> 
         # Can't connect, try again in 1s
-        Logger.info "Unable to connect, backing off and retrying..."
+        Logger.debug "Unable to connect, backing off and retrying..."
         Process.send_after self(), {:try_connect, tries + 1}, 1000
         {:noreply, state}
     end
@@ -53,7 +55,7 @@ defmodule Samantha.Shard do
   end
 
   def handle_info({:session, session_id}, state) do
-    Logger.info "Got a new session."
+    Logger.info "Parent got a new session."
     {:noreply, %{state | session_id: session_id}}
   end
 
