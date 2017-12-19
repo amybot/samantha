@@ -31,7 +31,7 @@ defmodule Samantha.Shard do
       "shard_count" => state[:shard_count],
     }
     Logger.info "Sending shard payload..."
-    response = HTTPoison.post! System.get_env("CONNECTOR_URL") <> "/shard", shard_payload |> Poison.encode!
+    response = HTTPoison.post!(System.get_env("CONNECTOR_URL") <> "/shard", Poison.encode!(shard_payload))
     shard_res = response.body |> Poison.decode!
     case shard_res["can_connect"] do
       true -> 
