@@ -178,7 +178,12 @@ defmodule Samantha.Discord do
       # We're not able to resume, drop the session and start over
       Logger.info "Can't resume, backing off 6s..."
       :timer.sleep 6000
-      {:reply, identify(state), state}
+      unless is_nil state[:heartbeat_pid] do
+        Logger.info "Probably a borked session, killing..."
+        {:terminate, nil, state}
+      else
+        {:reply, identify(state), state}
+      end
     end
   end
 
