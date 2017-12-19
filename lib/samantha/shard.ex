@@ -24,6 +24,7 @@ defmodule Samantha.Shard do
   end
 
   def handle_info({:try_connect, tries}, state) do
+    Logger.info "Connecting (attempt #{inspect tries})..."
     # Try to get a valid "token" from the shard connector
     shard_payload = %{
       "bot_name"    => System.get_env("BOT_NAME"),
@@ -36,7 +37,7 @@ defmodule Samantha.Shard do
         send self(), {:gateway_connect, shard_res["shard_id"]}
       false -> 
         # Can't connect, try again in 1s
-        Process.send_after self(), {:gateway_connect, state[:shard_id]}, 1000
+        Process.send_after self(), {:try_connect, tries + 1}, 1000
     end
     {:noreply, state}
   end
