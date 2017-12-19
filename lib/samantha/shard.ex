@@ -30,21 +30,25 @@ defmodule Samantha.Shard do
         "bot_name"    => System.get_env("BOT_NAME"),
         "shard_count" => state[:shard_count],
       }
-      Logger.info "Sending shard payload (#{Poison.encode! shard_payload}) to #{inspect System.get_env("CONNECTOR_URL")}/shard..."
+      Logger.info "Sharding with #{inspect System.get_env("CONNECTOR_URL")}/shard"
+      Logger.info "Payload (#{Poison.encode! shard_payload})"
       response = HTTPoison.post!(System.get_env("CONNECTOR_URL") <> "/shard", Poison.encode!(shard_payload))
       shard_res = response.body |> Poison.decode!
       case shard_res["can_connect"] do
         true -> 
           send self(), {:gateway_connect, shard_res["shard_id"]}
+          {:noreply, state}
         false -> 
           # Can't connect, try again in 1s
           Logger.info "Unable to connect, backing off and retrying..."
           Process.send_after self(), {:try_connect, tries + 1}, 1000
+          {:noreply, state}
       end
     rescue
-      e -> Logger.warn "Got error: #{inspect e}"
+      e -> 
+        Logger.warn "Got error: #{inspect e}"
+        {:noreply, state}
     end
-    {:noreply, state}
   end
 
   def handle_info({:seq, num}, state) do
