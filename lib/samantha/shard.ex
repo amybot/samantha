@@ -24,7 +24,7 @@ defmodule Samantha.Shard do
   end
 
   def handle_info({:try_connect, tries}, state) do
-    try 
+    try do
       Logger.info "Connecting (attempt #{inspect tries}) with shard count #{inspect state[:shard_count]}..."
       # Try to get a valid "token" from the shard connector
       shard_payload = %{
