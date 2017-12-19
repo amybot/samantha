@@ -104,6 +104,9 @@ defmodule Samantha.Shard do
   def handle_info(:ws_exit, state) do
     unless is_nil state[:ws_pid] do
       Process.exit state[:ws_pid], :kill
+    else
+      Logger.info "WS died, let's restart it."
+      Process.send_after self(), {:gateway_connect, state[:shard_id]}, 2500
     end
     {:noreply, state}
   end
