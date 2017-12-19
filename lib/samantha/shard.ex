@@ -105,7 +105,7 @@ defmodule Samantha.Shard do
     unless is_nil state[:ws_pid] do
       Process.exit state[:ws_pid], :kill
     else
-      Logger.info "WS died, let's restart it."
+      Logger.info "WS died, let's restart it with shard #{inspect state[:shard_id]}"
       Process.send_after self(), {:gateway_connect, state[:shard_id]}, 2500
     end
     {:noreply, state}
@@ -116,7 +116,7 @@ defmodule Samantha.Shard do
     Logger.debug "pid #{inspect pid}. ref #{inspect ref}"
     Logger.debug "reason: #{inspect reason}"
     if pid == state[:ws_pid] do
-      Logger.info "WS died, let's restart it."
+      Logger.info "WS died, let's restart it with shard #{inspect state[:shard_id]}"
       Process.send_after self(), {:gateway_connect, state[:shard_id]}, 2500
     end
     {:noreply, %{state | ws_pid: nil}}
