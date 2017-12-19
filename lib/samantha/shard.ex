@@ -48,6 +48,10 @@ defmodule Samantha.Shard do
       e -> 
         Logger.warn "Got error: #{inspect e}"
         {:noreply, state}
+    catch
+      e -> 
+        Logger.warn "Got error: #{inspect e}"
+        {:noreply, state}
     end
   end
 
