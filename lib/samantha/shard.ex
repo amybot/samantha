@@ -64,7 +64,7 @@ defmodule Samantha.Shard do
     }
     HTTPoison.post! System.get_env("CONNECTOR_URL") <> "/heartbeat", (shard_payload |> Poison.encode!), [{"Content-Type", "application/json"}]
     # Heartbeat every ~second
-    Process.send_after self(), :shard_heartbeat, 1000
+    Process.send_after self(), {:shard_heartbeat, shard_id}, 1000
     {:noreply, state}
   end
 
