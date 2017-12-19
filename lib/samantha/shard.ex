@@ -15,7 +15,7 @@ defmodule Samantha.Shard do
       shard_id: nil,
       shard_count: opts[:shard_count],
     }
-    Logger.info "Started shard with #{inspect state[:shard_count]}(#{inspect shard_count}) shards"
+    Logger.info "Started shard with #{inspect state[:shard_count]}(#{inspect opts[:shard_count]}) shards"
     {:ok, state}
   end
 
