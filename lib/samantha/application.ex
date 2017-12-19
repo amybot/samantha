@@ -19,6 +19,7 @@ defmodule Samantha.Application do
     Logger.info "Starting up!"
     # Get the shard count
     shard_count = (HTTPoison.get! "http://rancher-metadata/2015-12-19/self/service/scale").body |> String.to_integer
+    Logger.info "Shard count: #{inspect shard_count}"
     # Start the shard worker under our dynamic supervisor
     {:ok, shard_pid} = Samantha.InternalSupervisor.start_child Samantha.Shard.child_spec([%{token: System.get_env("BOT_TOKEN"), shard_count: shard_count}])
     send shard_pid, {:try_connect, 1}

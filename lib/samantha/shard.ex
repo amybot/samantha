@@ -30,6 +30,7 @@ defmodule Samantha.Shard do
       "bot_name"    => System.get_env("BOT_NAME"),
       "shard_count" => state[:shard_count],
     }
+    Logger.info "Sending shard payload..."
     response = HTTPoison.post! System.get_env("CONNECTOR_URL") <> "/shard", shard_payload |> Poison.encode!
     shard_res = response.body |> Poison.decode!
     case shard_res["can_connect"] do
@@ -37,6 +38,7 @@ defmodule Samantha.Shard do
         send self(), {:gateway_connect, shard_res["shard_id"]}
       false -> 
         # Can't connect, try again in 1s
+        Logger.info "Unable to connect, backing off and retrying..."
         Process.send_after self(), {:try_connect, tries + 1}, 1000
     end
     {:noreply, state}
