@@ -75,6 +75,11 @@ defmodule Samantha.Shard do
       # Not connected, so start the ws connection and otherwise do the needful
 
       # Give the gateway connection the initial state to work from
+      shard_id = unless is_integer shard_id do
+        shard_id |> String.to_integer
+      else
+        shard_id
+      end
       initial_state = %{
         token: state[:token],
         parent: self(),
