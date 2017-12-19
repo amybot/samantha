@@ -6,7 +6,7 @@ defmodule Samantha.Application do
   def start(_type, _args) do
     import Supervisor.Spec
     children = [
-      {Lace.Redis, %{redis_ip: "127.0.0.1", redis_port: 6379, pool_size: 10, redis_pass: "a"}},
+      {Lace.Redis, %{redis_ip: System.get_env("REDIS_IP"), redis_port: 6379, pool_size: 10, redis_pass: System.get_env("REDIS_PASS")}},
       {Lace, %{name: "node_name", group: "group_name", cookie: "node_cookie"}},
       # Set up our dynamic supervisor
       {Samantha.InternalSupervisor, []},
