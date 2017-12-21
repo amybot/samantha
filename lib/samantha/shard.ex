@@ -100,7 +100,6 @@ defmodule Samantha.Shard do
       Logger.warn "Got :gateway_connect when already connected, ignoring..."
       {:noreply, state}
     end
-    {:noreply, state}
   end
 
   def handle_info(:ws_exit, state) do
