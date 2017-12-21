@@ -81,6 +81,7 @@ defmodule Samantha.Discord do
     new_state = state 
                 |> Map.put(:client_pid, self())
                 |> Map.put(:cf_ray, ray)
+                |> Map.put(:trace, nil)
     {:ok, new_state}
   end
 
