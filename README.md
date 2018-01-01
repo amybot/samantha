@@ -1,6 +1,6 @@
 # Samantha
 
-**TODO: Add description**
+Distributed bot frontend for Discord.
 
 ## Configuration
 

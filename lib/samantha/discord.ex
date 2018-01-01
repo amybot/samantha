@@ -221,6 +221,12 @@ defmodule Samantha.Discord do
 
   def handle_event(event, data, state) do
     Logger.debug "Got unhandled event: #{inspect event} with payload #{inspect data}"
+    state = if is_nil state[:amqp_pid] do
+        state |> Map.put(:amqp_pid, GenServer.call(state[:parent], :amqp_pid))
+      else
+        state
+      end
+    send state[:amqp_pid], {:dispatch, %{"t" => event, "d" => data}}
     {:ok, state}
   end
 

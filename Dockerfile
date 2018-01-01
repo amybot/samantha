@@ -7,7 +7,7 @@ RUN mkdir /app
 WORKDIR /app
 
 RUN apk update
-RUN apk add git
+RUN apk add git make curl libcurl gawk
 
 COPY . /app
 

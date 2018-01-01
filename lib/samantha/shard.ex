@@ -3,18 +3,35 @@ defmodule Samantha.Shard do
   require Logger
 
   def start_link(opts) do
-    GenServer.start_link __MODULE__, opts #, name: __MODULE__
+    GenServer.start_link __MODULE__, opts, name: __MODULE__
   end
 
   def init(opts) do
+    # Since we apparently can't start :amyqp under our supervisor,
+    # start it here and monitor it
+    amqp_opts = %{
+        exchange: "#{System.get_env("BOT_NAME")}", 
+        queue: "#{System.get_env("BOT_NAME")}-messages", 
+        queue_error: "#{System.get_env("BOT_NAME")}-error", 
+        # TODO: Use env. vars
+        username: "guest", 
+        password: "guest", 
+        host: "localhost", 
+        client_pid: Samantha.Shard,
+      }
+    {:ok, amqp} = AmyQP.start_link amqp_opts
+
     state = %{
       ws_pid: nil,
+      amqp_pid: amqp,
+      amqp_opts: amqp_opts,
       seq: nil,
       session_id: nil,
       token: opts[:token],
       shard_id: nil,
       shard_count: opts[:shard_count],
     }
+
     {:ok, state}
   end
 
@@ -22,30 +39,43 @@ defmodule Samantha.Shard do
     {:reply, state[:seq], state}
   end
 
-  def handle_info({:try_connect, tries}, state) do
-    if tries == 1 do
-      Logger.info "Sharding with #{System.get_env("CONNECTOR_URL") <> "/shard"}"
-    end
-    Logger.debug "Connecting (attempt #{inspect tries}) with shard count #{inspect state[:shard_count]}..."
-    # Try to get a valid "token" from the shard connector
-    shard_payload = %{
-      "bot_name"    => System.get_env("BOT_NAME"),
-      "shard_count" => state[:shard_count],
-    }
-    {:ok, payload} = Poison.encode shard_payload
-    Logger.debug "Payload (#{payload})"
-    response = HTTPoison.post!(System.get_env("CONNECTOR_URL") <> "/shard", payload, [{"Content-Type", "application/json"}])
-    Logger.debug "Got response: #{inspect response.body}"
-    shard_res = response.body |> Poison.decode!
-    case shard_res["can_connect"] do
-      true -> 
-        send self(), {:gateway_connect, shard_res["shard_id"]}
-        {:noreply, state}
-      false -> 
-        # Can't connect, try again in 1s
-        Logger.debug "Unable to connect, backing off and retrying..."
-        Process.send_after self(), {:try_connect, tries + 1}, 1000
-        {:noreply, state}
+  def handle_call(:amqp_pid, _from, state) do
+    {:reply, state[:amqp_pid], state}
+  end
+
+  def try_connect do
+    GenServer.cast Samantha.Shard, {:try_connect, 1}
+  end
+
+  def handle_cast({:try_connect, tries}, state) do
+    if state[:shard_count] == 1 do
+      send self(), {:gateway_connect, 0}
+      {:noreply, state}
+    else
+      if tries == 1 do
+        Logger.info "Sharding with #{System.get_env("CONNECTOR_URL") <> "/shard"}"
+      end
+      Logger.debug "Connecting (attempt #{inspect tries}) with shard count #{inspect state[:shard_count]}..."
+      # Try to get a valid "token" from the shard connector
+      shard_payload = %{
+        "bot_name"    => System.get_env("BOT_NAME"),
+        "shard_count" => state[:shard_count],
+      }
+      {:ok, payload} = Poison.encode shard_payload
+      Logger.debug "Payload (#{payload})"
+      response = HTTPoison.post!(System.get_env("CONNECTOR_URL") <> "/shard", payload, [{"Content-Type", "application/json"}])
+      Logger.debug "Got response: #{inspect response.body}"
+      shard_res = response.body |> Poison.decode!
+      case shard_res["can_connect"] do
+        true -> 
+          send self(), {:gateway_connect, shard_res["shard_id"]}
+          {:noreply, state}
+        false -> 
+          # Can't connect, try again in 1s
+          Logger.debug "Unable to connect, backing off and retrying..."
+          Process.send_after self(), {:try_connect, tries + 1}, 1000
+          {:noreply, state}
+      end
     end
   end
 
@@ -60,13 +90,16 @@ defmodule Samantha.Shard do
   end
 
   def handle_info({:shard_heartbeat, shard_id}, state) do
-    shard_payload = %{
-      "bot_name" => System.get_env("BOT_NAME"),
-      "shard_id" => shard_id,
-    }
-    HTTPoison.post! System.get_env("CONNECTOR_URL") <> "/heartbeat", (shard_payload |> Poison.encode!), [{"Content-Type", "application/json"}]
-    # Heartbeat every ~second
-    Process.send_after self(), {:shard_heartbeat, shard_id}, 1000
+    # TODO: Move this to the discord gateway process so that the id can be reassigned on cascading failures etc.
+    if is_nil System.get_env "SHARD_COUNT" do
+      shard_payload = %{
+        "bot_name" => System.get_env("BOT_NAME"),
+        "shard_id" => shard_id,
+      }
+      HTTPoison.post! System.get_env("CONNECTOR_URL") <> "/heartbeat", (shard_payload |> Poison.encode!), [{"Content-Type", "application/json"}]
+      # Heartbeat every ~second
+      Process.send_after self(), {:shard_heartbeat, shard_id}, 1000
+    end
     {:noreply, state}
   end
 
@@ -116,10 +149,17 @@ defmodule Samantha.Shard do
     Logger.debug "Got :DOWN: "
     Logger.debug "pid #{inspect pid}. ref #{inspect ref}"
     Logger.debug "reason: #{inspect reason}"
-    if pid == state[:ws_pid] do
-      Logger.info "WS died, let's restart it with shard #{inspect state[:shard_id]}"
-      Process.send_after self(), {:gateway_connect, state[:shard_id]}, 2500
+    cond do
+      pid == state[:ws_pid] ->
+        Logger.info "WS died, let's restart it with shard #{inspect state[:shard_id]}"
+        Process.send_after self(), {:gateway_connect, state[:shard_id]}, 2500
+        {:noreply, %{state | ws_pid: nil}}
+      pid == state[:amqp_pid] ->
+        Logger.info "AMQP died, let's restart it"
+        {:ok, amqp} = AmyQP.start_link state[:amqp_opts]
+        {:noreply, %{state | amqp_pid: amqp}}
+      true ->
+        {:noreply, state}
     end
-    {:noreply, %{state | ws_pid: nil}}
   end
 end

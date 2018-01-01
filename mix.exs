@@ -23,9 +23,10 @@ defmodule Samantha.Mixfile do
   defp deps do
     [
       {:websockex, github: "queer/websockex"},
+      {:amyqp, github: "queer/amyqp"},
+      {:lace, github: "queer/lace"},
       {:httpoison, "~> 0.13"},
       {:poison, "~> 3.1"},
-      {:lace, github: "queer/lace"},
     ]
   end
 end
