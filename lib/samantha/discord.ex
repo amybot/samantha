@@ -61,6 +61,8 @@ defmodule Samantha.Discord do
   def start_link(state) do
     # Check the initial state to make sure it's sane
     if state[:shard_id] >= state[:shard_count] do
+      Logger.warn "Invalid shard count!?"
+      Sentry.capture_message "Invalid shard count: id #{state[:shard_id]} >= #{state[:shard_count]}!"
     else
       Logger.info "Starting gateway connect!"
       gateway = get_gateway_url()
@@ -228,20 +230,11 @@ defmodule Samantha.Discord do
 
   def handle_event(event, data, state) do
     Logger.debug "Got unhandled event: #{inspect event} with payload #{inspect data}"
-    # TODO: Does this actually make sense to do?
-    # Should probably just have a flag in the db to check it...
-    # 
-    # Adjust event type as needed
-    #type = if event == :GUILD_CREATE do
-    #    unless Enum.member?(state[:initial_guilds], data[:id]) do
-    #      :GUILD_JOIN
-    #    else
-    #      event
-    #    end
-    #  else
-    #    event
-    #  end
-    Redis.q ["RPUSH", System.get_env("EVENT_QUEUE"), Poison.encode!(%{"t" => Atom.to_string(event), "d" => data})]
+    try do
+      Redis.q ["RPUSH", System.get_env("EVENT_QUEUE"), Poison.encode!(%{"t" => Atom.to_string(event), "d" => data})]
+    rescue 
+      e -> Sentry.capture_exception e, [stacktrace: System.stacktrace()]
+    end
     {:ok, state}
   end
 

@@ -82,7 +82,6 @@ defmodule Samantha.Shard do
 
   def handle_info({:shard_heartbeat, shard_id}, state) do
     # TODO: Move this to the discord gateway process so that the id can be reassigned on cascading failures etc.
-    # TODO: Handle timeouts - apparently it may happen!
     if is_nil System.get_env "SHARD_COUNT" do
       shard_payload = %{
         "bot_name" => System.get_env("BOT_NAME"),
@@ -91,7 +90,9 @@ defmodule Samantha.Shard do
       try do
         HTTPoison.post! System.get_env("CONNECTOR_URL") <> "/heartbeat", (shard_payload |> Poison.encode!), [{"Content-Type", "application/json"}], [recv_timeout: 500]
       rescue
-        e -> Logger.warn "Error with heartbeat! #{inspect e}"
+        e -> 
+          Logger.warn "Error with heartbeat! #{inspect e}"
+          Sentry.capture_message "Heartbeat failed: #{inspect e}", [stacktrace: System.stacktrace()]
       end
       # Heartbeat every ~second
       Process.send_after self(), {:shard_heartbeat, shard_id}, 1000
