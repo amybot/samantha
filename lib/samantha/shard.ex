@@ -9,22 +9,8 @@ defmodule Samantha.Shard do
   def init(opts) do
     # Since we apparently can't start :amyqp under our supervisor,
     # start it here and monitor it
-    amqp_opts = %{
-        exchange: "#{System.get_env("BOT_NAME")}", 
-        queue: "#{System.get_env("BOT_NAME")}-messages", 
-        queue_error: "#{System.get_env("BOT_NAME")}-error", 
-        # TODO: Use env. vars
-        username: "guest", 
-        password: "guest", 
-        host: "localhost", 
-        client_pid: Samantha.Shard,
-      }
-    {:ok, amqp} = AmyQP.start_link amqp_opts
-
     state = %{
       ws_pid: nil,
-      amqp_pid: amqp,
-      amqp_opts: amqp_opts,
       seq: nil,
       session_id: nil,
       token: opts[:token],
@@ -48,6 +34,11 @@ defmodule Samantha.Shard do
   end
 
   def handle_cast({:try_connect, tries}, state) do
+    send self(), {:try_connect, tries}
+    {:noreply, state}
+  end
+
+  def handle_info({:try_connect, tries}, state) do
     if state[:shard_count] == 1 do
       send self(), {:gateway_connect, 0}
       {:noreply, state}
@@ -91,12 +82,17 @@ defmodule Samantha.Shard do
 
   def handle_info({:shard_heartbeat, shard_id}, state) do
     # TODO: Move this to the discord gateway process so that the id can be reassigned on cascading failures etc.
+    # TODO: Handle timeouts - apparently it may happen!
     if is_nil System.get_env "SHARD_COUNT" do
       shard_payload = %{
         "bot_name" => System.get_env("BOT_NAME"),
         "shard_id" => shard_id,
       }
-      HTTPoison.post! System.get_env("CONNECTOR_URL") <> "/heartbeat", (shard_payload |> Poison.encode!), [{"Content-Type", "application/json"}]
+      try do
+        HTTPoison.post! System.get_env("CONNECTOR_URL") <> "/heartbeat", (shard_payload |> Poison.encode!), [{"Content-Type", "application/json"}], [recv_timeout: 500]
+      rescue
+        e -> Logger.warn "Error with heartbeat! #{inspect e}"
+      end
       # Heartbeat every ~second
       Process.send_after self(), {:shard_heartbeat, shard_id}, 1000
     end
@@ -104,6 +100,7 @@ defmodule Samantha.Shard do
   end
 
   def handle_info({:gateway_connect, shard_id}, state) do
+    # TODO: Ensure valid shard_id
     # Check if we're already connected
     if is_nil state[:ws_pid] do
       Logger.info "Starting a gateway connection..."
@@ -123,12 +120,16 @@ defmodule Samantha.Shard do
         shard_count: state[:shard_count],
       }
 
-      {:ok, pid} = Samantha.Discord.start_link initial_state
-      ref = Process.monitor pid
-      Logger.info "Started WS: pid #{inspect pid}, ref #{inspect ref}"
-      # Start heartbeating
-      send self(), {:shard_heartbeat, shard_id}
-      {:noreply, %{state | ws_pid: pid, shard_id: shard_id}}
+      {res, pid} = Samantha.Discord.start_link initial_state
+      if res == :ok do
+        ref = Process.monitor pid
+        Logger.info "Started WS: pid #{inspect pid}, ref #{inspect ref}"
+        # Start heartbeating
+        send self(), {:shard_heartbeat, shard_id}
+        {:noreply, %{state | ws_pid: pid, shard_id: shard_id}}
+      else
+        {:noreply, state}
+      end
     else
       Logger.warn "Got :gateway_connect when already connected, ignoring..."
       {:noreply, state}
@@ -154,10 +155,6 @@ defmodule Samantha.Shard do
         Logger.info "WS died, let's restart it with shard #{inspect state[:shard_id]}"
         Process.send_after self(), {:gateway_connect, state[:shard_id]}, 2500
         {:noreply, %{state | ws_pid: nil}}
-      pid == state[:amqp_pid] ->
-        Logger.info "AMQP died, let's restart it"
-        {:ok, amqp} = AmyQP.start_link state[:amqp_opts]
-        {:noreply, %{state | amqp_pid: amqp}}
       true ->
         {:noreply, state}
     end

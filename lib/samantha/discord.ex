@@ -2,6 +2,7 @@ defmodule Samantha.Discord do
   use WebSockex
 
   import Samantha.Util
+  alias Lace.Redis
 
   require Logger
 
@@ -58,10 +59,14 @@ defmodule Samantha.Discord do
   ###############
 
   def start_link(state) do
-    Logger.info "Starting gateway connect!"
-    gateway = get_gateway_url()
-    Logger.info "Connecting to: #{gateway}"
-    WebSockex.start(gateway, __MODULE__, state, [async: true])
+    # Check the initial state to make sure it's sane
+    if state[:shard_id] >= state[:shard_count] do
+    else
+      Logger.info "Starting gateway connect!"
+      gateway = get_gateway_url()
+      Logger.info "Connecting to: #{gateway}"
+      WebSockex.start(gateway, __MODULE__, state, [async: true])
+    end
   end
 
   def init(state) do
@@ -179,12 +184,7 @@ defmodule Samantha.Discord do
       # We're not able to resume, drop the session and start over
       Logger.info "Can't resume, backing off 6s..."
       :timer.sleep 6000
-#      unless is_nil state[:heartbeat_pid] do
-#        Logger.info "Probably a borked session, killing..."
-#        {:terminate, nil, state}
-#      else
       {:reply, identify(state), state}
-#      end
     end
   end
 
@@ -204,13 +204,20 @@ defmodule Samantha.Discord do
     Logger.info "Ready: We are: #{inspect data[:user]}"
     Logger.info "Ready: _trace: #{inspect data[:_trace]}"
     Logger.info "Ready: We are in #{inspect length(data[:guilds])} guilds."
+    # Once we get :READY, we need to cache the unavailable guilds so 
+    # that we know whether to fire :GUILD_CREATE or :GUILD_JOIN correctly. 
+    Logger.debug "Ready: Initial guilds: #{inspect data[:guilds]}"
+    guilds = data[:guilds]
+             |> Enum.map(fn(x) -> x[:id] end)
+             |> Enum.to_list
+    Logger.debug "READY with guilds: #{inspect guilds}"
     new_state = state
                 |> Map.put(:session_id, data[:session_id])
                 |> Map.put(:trace, data[:_trace])
+                |> Map.put(:user, data[:user])
+                |> Map.put(:initial_guilds, guilds)
     Logger.info "All traces: #{inspect new_state[:trace]}"
     send state[:parent], {:session, data[:session_id]}
-    new_state = state
-                |> Map.put(:user, data[:user])
     {:ok, new_state}
   end
 
@@ -221,12 +228,20 @@ defmodule Samantha.Discord do
 
   def handle_event(event, data, state) do
     Logger.debug "Got unhandled event: #{inspect event} with payload #{inspect data}"
-    state = if is_nil state[:amqp_pid] do
-        state |> Map.put(:amqp_pid, GenServer.call(state[:parent], :amqp_pid))
-      else
-        state
-      end
-    send state[:amqp_pid], {:dispatch, %{"t" => event, "d" => data}}
+    # TODO: Does this actually make sense to do?
+    # Should probably just have a flag in the db to check it...
+    # 
+    # Adjust event type as needed
+    #type = if event == :GUILD_CREATE do
+    #    unless Enum.member?(state[:initial_guilds], data[:id]) do
+    #      :GUILD_JOIN
+    #    else
+    #      event
+    #    end
+    #  else
+    #    event
+    #  end
+    Redis.q ["RPUSH", System.get_env("EVENT_QUEUE"), Poison.encode!(%{"t" => Atom.to_string(event), "d" => data})]
     {:ok, state}
   end
 
