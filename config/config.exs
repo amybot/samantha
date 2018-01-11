@@ -29,3 +29,10 @@ use Mix.Config
 #
 #     import_config "#{Mix.env}.exs"
 config :logger, level: :info
+
+config :sentry,
+  dsn: System.get_env("SENTRY_DSN"),
+  included_environments: ["prod"],
+  environment_name: System.get_env("ENV_NAME") || "dev"
+#  enable_source_code_context: true,
+#  root_source_code_path: File.cwd!

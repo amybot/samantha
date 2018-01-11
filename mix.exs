@@ -26,6 +26,7 @@ defmodule Samantha.Mixfile do
       {:lace, github: "queer/lace"},
       {:httpoison, "~> 0.13"},
       {:poison, "~> 3.1"},
+      {:sentry, "~> 6.0.5"},
     ]
   end
 end
