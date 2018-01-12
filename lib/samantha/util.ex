@@ -4,7 +4,7 @@ defmodule Samantha.Util do
     |> :erlang.term_to_binary
   end
   
-  defp payload_base(op, data, seq_num, event_name) do
+  def payload_base(op, data, seq_num, event_name) do
     payload = %{"op" => op, "d" => data}
     payload
     |> update_payload(seq_num, "s", seq_num)

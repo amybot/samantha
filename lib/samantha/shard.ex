@@ -16,6 +16,7 @@ defmodule Samantha.Shard do
       token: opts[:token],
       shard_id: nil,
       shard_count: opts[:shard_count],
+      shard_status: :unknown,
     }
 
     {:ok, state}
@@ -127,7 +128,7 @@ defmodule Samantha.Shard do
         Logger.info "Started WS: pid #{inspect pid}, ref #{inspect ref}"
         # Start heartbeating
         send self(), {:shard_heartbeat, shard_id}
-        {:noreply, %{state | ws_pid: pid, shard_id: shard_id}}
+        {:noreply, %{state | ws_pid: pid, shard_id: shard_id, shard_status: :ws_open}}
       else
         {:noreply, state}
       end
@@ -135,6 +136,10 @@ defmodule Samantha.Shard do
       Logger.warn "Got :gateway_connect when already connected, ignoring..."
       {:noreply, state}
     end
+  end
+
+  def handle_info({:shard_status, status}, state) do
+    {:noreply, %{state | shard_status: status}}
   end
 
   def handle_info(:ws_exit, state) do

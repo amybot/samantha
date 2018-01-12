@@ -13,6 +13,7 @@ defmodule Samantha.Application do
     end
 
     children = [
+      Samantha.Queue,
       {Lace.Redis, %{
           redis_ip: System.get_env("REDIS_IP"), redis_port: 6379, pool_size: 100, redis_pass: System.get_env("REDIS_PASS")
         }},

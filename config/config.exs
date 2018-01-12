@@ -36,3 +36,10 @@ config :sentry,
   environment_name: System.get_env("ENV_NAME") || "dev"
 #  enable_source_code_context: true,
 #  root_source_code_path: File.cwd!
+
+# Shard gateway message-sending doesn't need to be ratelimited across shards, 
+# so the ETS backend should be perfectly fine. 
+config :hammer,
+  backend: {Hammer.Backend.ETS,
+            [expiry_ms: 60_000 * 60 * 4,
+             cleanup_interval_ms: 60_000 * 10]}

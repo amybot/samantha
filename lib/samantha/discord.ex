@@ -8,6 +8,8 @@ defmodule Samantha.Discord do
 
   @api_base "https://discordapp.com/api/v6"
 
+  @large_threshold 250
+
   ##################
   ## Opcode stuff ##
   ##################
@@ -67,6 +69,8 @@ defmodule Samantha.Discord do
       Logger.info "Starting gateway connect!"
       gateway = get_gateway_url()
       Logger.info "Connecting to: #{gateway}"
+      # Websocket PID is ready, connect to the gateway
+      send state[:parent], {:shard_status, :gateway_connect}
       WebSockex.start(gateway, __MODULE__, state, [async: true])
     end
   end
@@ -89,6 +93,8 @@ defmodule Samantha.Discord do
                 |> Map.put(:client_pid, self())
                 |> Map.put(:cf_ray, ray)
                 |> Map.put(:trace, nil)
+    # We connected to the gateway successfully, we're logging in now
+    send state[:parent], {:shard_status, :logging_in}
     {:ok, new_state}
   end
 
@@ -117,8 +123,12 @@ defmodule Samantha.Discord do
     end
     Logger.info "Killing heartbeat: #{inspect state[:heartbeat_pid]}"
     Process.exit(state[:heartbeat_pid], :kill)
+    Logger.info "Killing gateway messenger: #{inspect state[:gateway_pid]}"
+    Process.exit(state[:gateway_pid], :kill)
     Logger.info "Done! Please start a new gateway link."
+    send state[:parent], {:shard_status, :disconnected}
     send state[:parent], :ws_exit
+    # Disconnected from gateway, so not much else to say here
     {:ok, state}
   end
 
@@ -140,6 +150,9 @@ defmodule Samantha.Discord do
     {:ok, heartbeat_pid} = Samantha.Heartbeat.start_link self(), state[:seq]
     send heartbeat_pid, {:heartbeat, @op_heartbeat, d[:heartbeat_interval]}
     heartbeat_state = state |> Map.put(:heartbeat_pid, heartbeat_pid)
+    # Spawn gateway messenger
+    {:ok, gateway_pid} = Samantha.Gateway.start_link self()
+    heartbeat_state = heartbeat_state |> Map.put(:gateway_pid, gateway_pid)
 
     # Handle RESUME if we have a session already
     if is_nil state[:session_id] do
@@ -150,11 +163,14 @@ defmodule Samantha.Discord do
                   |> Map.put(:interval, d[:heartbeat_interval])
                   |> Map.put(:seq, nil)
       Logger.info "Welcome to Discord!"
+      # Got HELLO, IDENTIFY ourselves
+      send state[:parent], {:shard_status, :identifying}
       {:reply, identify(new_state), new_state}
     else
       # We have a session ID, so we should RESUME over it
       Logger.info "Resuming session..."
 
+      send state[:parent], {:shard_status, :resuming}
       {:reply, resume(heartbeat_state), heartbeat_state}
     end
   end
@@ -219,17 +235,35 @@ defmodule Samantha.Discord do
                 |> Map.put(:user, data[:user])
                 |> Map.put(:initial_guilds, guilds)
     Logger.info "All traces: #{inspect new_state[:trace]}"
+    # Start polling for gateway messages
+    Logger.info "Starting gateway poll task..."
+    send state[:gateway_pid], :poll_gateway
+    # Pass our session to the parent
     send state[:parent], {:session, data[:session_id]}
+    # We connected and got the :READY, so we're all the way in :tada:
+    send state[:parent], {:shard_status, :ready}
+    Logger.info "Fully up!"
     {:ok, new_state}
   end
 
   def handle_event(:RESUMED, data, state) do
     Logger.info "Resumed with #{inspect data}"
+    # Our RESUME worked, so we're good
+    send state[:parent], {:shard_status, :ready}
     {:ok, %{state | trace: data[:_trace]}}
   end
 
   def handle_event(event, data, state) do
     Logger.debug "Got unhandled event: #{inspect event} with payload #{inspect data}"
+    # If this is a GUILD_CREATE event, check if we need to queue an OP8 
+    # REQUEST_GUILD_MEMBERS
+    if event == :GUILD_CREATE do
+      if data[:member_count] > @large_threshold do
+        Logger.info "Requesting guild members for large guild #{data[:id]}"
+        payload = payload_base @op_request_guild_members, %{"guild_id" => data[:id], "query" => "", "limit" => 0}, nil, nil
+        GenServer.cast Samantha.Queue, {:push, "gateway", payload}
+      end
+    end
     try do
       Redis.q ["RPUSH", System.get_env("EVENT_QUEUE"), Poison.encode!(%{"t" => Atom.to_string(event), "d" => data})]
     rescue 
@@ -252,7 +286,7 @@ defmodule Samantha.Discord do
         "$device" => "samantha"
       },
       "compress" => false,
-      "large_threshold" => 250,
+      "large_threshold" => @large_threshold,
       "shard" => [state[:shard_id], state[:shard_count]],
     }
     payload = binary_payload @op_identify, data
