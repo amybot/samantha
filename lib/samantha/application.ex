@@ -18,7 +18,7 @@ defmodule Samantha.Application do
           redis_ip: System.get_env("REDIS_IP"), redis_port: 6379, pool_size: 100, redis_pass: System.get_env("REDIS_PASS")
         }},
       # TODO: We do need these nodes joining a cluster
-      {Lace, %{name: "node_name", group: "group_name", cookie: "node_cookie"}},
+      {Lace, %{name: System.get_env("NODE_NAME"), group: System.get_env("GROUP_NAME"), cookie: System.get_env("COOKIE")}},
       # Start the main shard process
       {Samantha.Shard, %{
           token: System.get_env("BOT_TOKEN"), 

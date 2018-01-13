@@ -1,4 +1,10 @@
 defmodule Samantha.Gateway do
+  @moduledoc """
+  This module is specifically used for handling the queue of gateway messages
+  that are meant to be send. The queue is managed by `Samantha.Queue`, which 
+  also supports named queues beyond the gateway queue.
+  """
+
   use GenServer
   require Logger
 
