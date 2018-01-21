@@ -25,6 +25,8 @@ defmodule Samantha.Mixfile do
       {:websockex, github: "queer/websockex"},
       {:lace, github: "queer/lace"},
       {:httpoison, "~> 0.13"},
+      {:plug, "~> 1.4"},
+      {:cowboy, "~> 1.1"},
       {:poison, "~> 3.1"},
       {:sentry, "~> 6.0.5"},
       {:hammer, "~> 2.1.0"},

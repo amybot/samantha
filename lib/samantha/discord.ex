@@ -222,6 +222,8 @@ defmodule Samantha.Discord do
     Logger.info "Ready: We are: #{inspect data[:user]}"
     Logger.info "Ready: _trace: #{inspect data[:_trace]}"
     Logger.info "Ready: We are in #{inspect length(data[:guilds])} guilds."
+    # Tell the parent who we are
+    send state[:parent], {:set_self, data[:user]}
     # Once we get :READY, we need to cache the unavailable guilds so 
     # that we know whether to fire :GUILD_CREATE or :GUILD_JOIN correctly. 
     Logger.debug "Ready: Initial guilds: #{inspect data[:guilds]}"
@@ -253,7 +255,29 @@ defmodule Samantha.Discord do
     {:ok, %{state | trace: data[:_trace]}}
   end
 
+  def handle_event(:VOICE_STATE_UPDATE, data, state) do
+    if data[:user_id] == state[:user][:id] do
+      # If the user is us, *and* there's a channel_id field, *and* the channel
+      # id isn't nil, then we're joining
+      channel = data[:channel_id]
+      unless is_nil channel do
+        GenServer.cast Samantha.Queue, {:push, "cvsu:#{inspect channel}", data |> Map.put(:shard_id, state[:shard_id])}
+      end
+    end
+    unhandled_event :VOICE_STATE_UPDATE, data, state
+  end
+
+  def handle_event(:VOICE_SERVER_UPDATE, data, state) do
+    guild_id = data[:guild_id]
+    GenServer.cast Samantha.Queue, {:push, "gvsu:#{inspect guild_id}", data}
+    unhandled_event :VOICE_SERVER_UPDATE, data, state
+  end
+
   def handle_event(event, data, state) do
+    unhandled_event event, data, state
+  end
+
+  defp unhandled_event(event, data, state) do
     Logger.debug "Got unhandled event: #{inspect event} with payload #{inspect data}"
     # If this is a GUILD_CREATE event, check if we need to queue an OP8 
     # REQUEST_GUILD_MEMBERS

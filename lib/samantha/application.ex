@@ -17,8 +17,12 @@ defmodule Samantha.Application do
       {Lace.Redis, %{
           redis_ip: System.get_env("REDIS_IP"), redis_port: 6379, pool_size: 100, redis_pass: System.get_env("REDIS_PASS")
         }},
-      # TODO: We do need these nodes joining a cluster
       {Lace, %{name: System.get_env("NODE_NAME"), group: System.get_env("GROUP_NAME"), cookie: System.get_env("COOKIE")}},
+      # Shard API, for gateway messages and shit
+      Plug.Adapters.Cowboy.child_spec(:http, Samantha.Router, [], [
+        dispatch: dispatch(),
+        port: get_port(),
+      ]),
       # Start the main shard process
       {Samantha.Shard, %{
           token: System.get_env("BOT_TOKEN"), 
@@ -37,5 +41,21 @@ defmodule Samantha.Application do
     Logger.info "Shard booted!"
 
     app_sup
+  end
+
+  defp get_port do
+    x = System.get_env "PORT"
+    case x do
+      nil -> 8937
+      _ -> x |> String.to_integer
+    end
+  end
+
+  defp dispatch do
+    [
+      {:_, [
+        {:_, Plug.Adapters.Cowboy.Handler, {Samantha.Router, []}}
+      ]},
+    ]
   end
 end

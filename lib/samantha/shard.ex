@@ -17,17 +17,22 @@ defmodule Samantha.Shard do
       shard_id: nil,
       shard_count: opts[:shard_count],
       shard_status: :unknown,
+      self: nil,
     }
 
     {:ok, state}
+  end
+
+  def handle_call(:get_self, _from, state) do
+    {:reply, state[:self], state}
   end
 
   def handle_call(:seq, _from, state) do
     {:reply, state[:seq], state}
   end
 
-  def handle_call(:amqp_pid, _from, state) do
-    {:reply, state[:amqp_pid], state}
+  def handle_call(:shard_count, _from, state) do
+    {:reply, state[:shard_count], state}
   end
 
   def try_connect do
@@ -69,6 +74,10 @@ defmodule Samantha.Shard do
           {:noreply, state}
       end
     end
+  end
+
+  def handle_info({:set_self, self_data}, state) do
+    {:noreply, %{state | self: self_data}}
   end
 
   def handle_info({:seq, num}, state) do

@@ -25,13 +25,13 @@ defmodule Samantha.Gateway do
   def handle_info(:poll_gateway, state) do
     msg = GenServer.call Samantha.Queue, {:pop, "gateway"}
     unless is_nil msg do
-      Logger.info "Got gateway op send req.: #{inspect msg}"
+      Logger.debug "Got gateway op send req.: #{inspect msg}"
       case Hammer.check_rate("gateway_msg", 60_000, 100) do
         {:allow, _count} ->
           # send
           payload = msg |> :erlang.term_to_binary
           WebSockex.send_frame state[:parent_pid], {:binary, payload}
-          Logger.info "Sent op #{inspect msg["op"]}!"
+          Logger.debug "Sent op #{inspect msg["op"]}!"
         {:deny, _limit} -> 
           # re-queue
           GenServer.cast Samantha.Queue, {:push, "gateway", msg}

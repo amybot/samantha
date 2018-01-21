@@ -32,7 +32,7 @@ defmodule Samantha.Queue do
   end
 
   def handle_cast({:clear, id}, state) do
-    Map.put state, id, :queue.new()
+    state = Map.put state, id, :queue.new()
     {:noreply, state}
   end
 
