@@ -4,7 +4,7 @@ defmodule Samantha.Application do
   require Logger
 
   def start(_type, _args) do
-    Logger.info "Starting up!"
+    Logger.info "[SHARD] Starting up!"
     # Get the shard count
     shard_count = unless is_nil System.get_env("SHARD_COUNT") do
       System.get_env("SHARD_COUNT") |> String.to_integer
@@ -13,10 +13,10 @@ defmodule Samantha.Application do
     end
 
     children = [
-      Samantha.Queue,
       {Lace.Redis, %{
           redis_ip: System.get_env("REDIS_IP"), redis_port: 6379, pool_size: 100, redis_pass: System.get_env("REDIS_PASS")
         }},
+      {Samantha.Queue, %{id: UUID.uuid4()}},
       {Lace, %{name: System.get_env("NODE_NAME"), group: System.get_env("GROUP_NAME"), cookie: System.get_env("COOKIE")}},
       # Shard API, for gateway messages and shit
       Plug.Adapters.Cowboy.child_spec(:http, Samantha.Router, [], [
@@ -34,11 +34,11 @@ defmodule Samantha.Application do
     # Start the "real" supervisor
     app_sup = Supervisor.start_link(children, opts)
     
-    Logger.info "Shard count: #{inspect shard_count}"
+    Logger.info "[SHARD] Shard count: #{inspect shard_count}"
 
     :timer.sleep 1000
     Samantha.Shard.try_connect()
-    Logger.info "Shard booted!"
+    Logger.info "[SHARD] Shard booted!"
 
     app_sup
   end

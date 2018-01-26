@@ -63,12 +63,12 @@ defmodule Samantha.Discord do
   def start_link(state) do
     # Check the initial state to make sure it's sane
     if state[:shard_id] >= state[:shard_count] do
-      Logger.warn "Invalid shard count!?"
+      Logger.warn "[DISCORD] Invalid shard count!?"
       Sentry.capture_message "Invalid shard count: id #{state[:shard_id]} >= #{state[:shard_count]}!"
     else
-      Logger.info "Starting gateway connect!"
+      Logger.info "[DISCORD] Starting gateway connect!"
       gateway = get_gateway_url()
-      Logger.info "Connecting to: #{gateway}"
+      Logger.info "[DISCORD] Connecting to: #{gateway}"
       # Websocket PID is ready, connect to the gateway
       send state[:parent], {:shard_status, :gateway_connect}
       WebSockex.start(gateway, __MODULE__, state, [async: true])
@@ -76,19 +76,19 @@ defmodule Samantha.Discord do
   end
 
   def init(state) do
-    Logger.info "init?"
+    Logger.info "[DISCORD] init?"
     {:once, state}
   end
 
   def handle_connect(conn, state) do
-    Logger.info "Connected to gateway"
+    Logger.info "[DISCORD] Connected to gateway"
     unless is_nil state[:session_id] do
-      Logger.info "We have a session; expect OP 10 -> OP 6."
+      Logger.info "[DISCORD] We have a session; expect OP 10 -> OP 6."
     end
     headers = Enum.into conn.resp_headers, %{}
     ray = headers["Cf-Ray"]
     server = headers[:Server]
-    Logger.info "Connected to #{server} ray #{ray}"
+    Logger.info "[DISCORD] Connected to #{server} ray #{ray}"
     new_state = state 
                 |> Map.put(:client_pid, self())
                 |> Map.put(:cf_ray, ray)
@@ -111,21 +111,21 @@ defmodule Samantha.Discord do
   end
 
   def handle_frame(msg, state) do
-    Logger.info "Got msg: #{inspect msg}"
+    Logger.info "[DISCORD] Got msg: #{inspect msg}"
     {:ok, state}
   end
 
   def handle_disconnect(disconnect_map, state) do
-    Logger.info "Disconnected from websocket!"
-    Logger.debug "Disconnect info: #{inspect disconnect_map}"
+    Logger.info "[DISCORD] Disconnected from websocket!"
+    Logger.debug "[DISCORD] Disconnect info: #{inspect disconnect_map}"
     unless is_nil disconnect_map[:reason] do
-      Logger.warn "Disconnect reason: #{inspect disconnect_map[:reason]}"
+      Logger.warn "[DISCORD] Disconnect reason: #{inspect disconnect_map[:reason]}"
     end
-    Logger.info "Killing heartbeat: #{inspect state[:heartbeat_pid]}"
+    Logger.info "[DISCORD] Killing heartbeat: #{inspect state[:heartbeat_pid]}"
     Process.exit(state[:heartbeat_pid], :kill)
-    Logger.info "Killing gateway messenger: #{inspect state[:gateway_pid]}"
+    Logger.info "[DISCORD] Killing gateway messenger: #{inspect state[:gateway_pid]}"
     Process.exit(state[:gateway_pid], :kill)
-    Logger.info "Done! Please start a new gateway link."
+    Logger.info "[DISCORD] Done! Please start a new gateway link."
     send state[:parent], {:shard_status, :disconnected}
     send state[:parent], :ws_exit
     # Disconnected from gateway, so not much else to say here
@@ -133,7 +133,7 @@ defmodule Samantha.Discord do
   end
 
   def terminate(reason, _state) do
-    Logger.info "Websocket terminating: #{inspect reason}"
+    Logger.info "[DISCORD] Websocket terminating: #{inspect reason}"
     :ok
   end
 
@@ -143,7 +143,7 @@ defmodule Samantha.Discord do
 
   # Handle specific ops
   def handle_op(@op_hello, payload, state) do
-    Logger.info "Hello!!"
+    Logger.info "[DISCORD] Hello!!"
 
     d = payload[:d]
     # Spawn heartbeat worker and start heartbeat
@@ -152,23 +152,24 @@ defmodule Samantha.Discord do
     heartbeat_state = state |> Map.put(:heartbeat_pid, heartbeat_pid)
     # Spawn gateway messenger
     {:ok, gateway_pid} = Samantha.Gateway.start_link self()
+    Logger.info "[DISCORD] Spawned gateway manager!"
     heartbeat_state = heartbeat_state |> Map.put(:gateway_pid, gateway_pid)
 
     # Handle RESUME if we have a session already
     if is_nil state[:session_id] do
       # When we get HELLO, we need to start heartbeating immediately
-      Logger.info "Hello: #{inspect d}"
+      Logger.info "[DISCORD] Hello: #{inspect d}"
       new_state = heartbeat_state
                   |> Map.put(:trace, d[:trace])
                   |> Map.put(:interval, d[:heartbeat_interval])
                   |> Map.put(:seq, nil)
-      Logger.info "Welcome to Discord!"
+      Logger.info "[DISCORD] Welcome to Discord!"
       # Got HELLO, IDENTIFY ourselves
       send state[:parent], {:shard_status, :identifying}
       {:reply, identify(new_state), new_state}
     else
       # We have a session ID, so we should RESUME over it
-      Logger.info "Resuming session..."
+      Logger.info "[DISCORD] Resuming session..."
 
       send state[:parent], {:shard_status, :resuming}
       {:reply, resume(heartbeat_state), heartbeat_state}
@@ -177,7 +178,7 @@ defmodule Samantha.Discord do
 
   def handle_op(@op_reconnect, _payload, state) do
     # When we get a :reconnect, we need to do a FULL reconnect
-    Logger.info "Got :reconnect, killing WS to start over."
+    Logger.info "[DISCORD] Got :reconnect, killing WS to start over."
     {:terminate, nil, state}
   end
 
@@ -191,16 +192,16 @@ defmodule Samantha.Discord do
   end
 
   def handle_op(@op_invalid_session, payload, state) do
-    Logger.info "Got :invalid_session!"
+    Logger.info "[DISCORD] Got :invalid_session!"
     can_resume = payload[:d]
     if can_resume do
       # We're able to resume, wait a bit then send a RESUME
-      Logger.info "Can resume, wait a little bit..."
+      Logger.info "[DISCORD] Can resume, wait a little bit..."
       :timer.sleep 2500
       {:reply, resume(state), state}
     else
       # We're not able to resume, drop the session and start over
-      Logger.info "Can't resume, backing off 6s..."
+      Logger.info "[DISCORD] Can't resume, backing off 6s..."
       :timer.sleep 6000
       {:reply, identify(state), state}
     end
@@ -208,7 +209,7 @@ defmodule Samantha.Discord do
 
   # Generic op handling
   def handle_op(opcode, payload, state) do
-    Logger.debug "Got unhandled op: #{inspect opcode} (#{inspect @opcodes[opcode]})" 
+    Logger.debug "[DISCORD] Got unhandled op: #{inspect opcode} (#{inspect @opcodes[opcode]})" 
           <> " with payload: #{inspect payload}"
     {:noreply, nil, state}
   end
@@ -218,38 +219,44 @@ defmodule Samantha.Discord do
   ############################
 
   def handle_event(:READY, data, state) do
-    Logger.info "Ready: Gateway protocol: #{inspect data[:v]}"
-    Logger.info "Ready: We are: #{inspect data[:user]}"
-    Logger.info "Ready: _trace: #{inspect data[:_trace]}"
-    Logger.info "Ready: We are in #{inspect length(data[:guilds])} guilds."
-    # Tell the parent who we are
-    send state[:parent], {:set_self, data[:user]}
+    Logger.info "[DISCORD] Ready: Gateway protocol: #{inspect data[:v]}"
+    Logger.info "[DISCORD] Ready: We are: #{inspect data[:user]}"
+    Logger.info "[DISCORD] Ready: _trace: #{inspect data[:_trace]}"
+    Logger.info "[DISCORD] Ready: We are in #{inspect length(data[:guilds])} guilds."
     # Once we get :READY, we need to cache the unavailable guilds so 
     # that we know whether to fire :GUILD_CREATE or :GUILD_JOIN correctly. 
-    Logger.debug "Ready: Initial guilds: #{inspect data[:guilds]}"
+    Logger.debug "[DISCORD] Ready: Initial guilds: #{inspect data[:guilds]}"
     guilds = data[:guilds]
              |> Enum.map(fn(x) -> x[:id] end)
              |> Enum.to_list
-    Logger.debug "READY with guilds: #{inspect guilds}"
+    Logger.debug "[DISCORD] READY with guilds: #{inspect guilds}"
     new_state = state
                 |> Map.put(:session_id, data[:session_id])
                 |> Map.put(:trace, data[:_trace])
                 |> Map.put(:user, data[:user])
                 |> Map.put(:initial_guilds, guilds)
-    Logger.info "All traces: #{inspect new_state[:trace]}"
+    Redis.q ["HSET", "shard-users", state[:shard_id], Poison.encode!(data[:user])]
+    Logger.info "[DISCORD] All traces: #{inspect new_state[:trace]}"
     # Start polling for gateway messages
-    Logger.info "Starting gateway poll task..."
+    Logger.info "[DISCORD] Starting gateway poll task..."
     send state[:gateway_pid], :poll_gateway
     # Pass our session to the parent
     send state[:parent], {:session, data[:session_id]}
     # We connected and got the :READY, so we're all the way in :tada:
     send state[:parent], {:shard_status, :ready}
-    Logger.info "Fully up!"
+    Logger.info "[DISCORD] Fully up!"
     {:ok, new_state}
   end
 
   def handle_event(:RESUMED, data, state) do
-    Logger.info "Resumed with #{inspect data}"
+    Logger.info "[DISCORD] Resumed with #{inspect data}"
+    Logger.info "[DISCORD] Starting gateway poll task..."
+    send state[:gateway_pid], :poll_gateway
+    {:ok, user} = Redis.q ["HGET", "shard-users", state[:shard_id]]
+    user = Poison.decode!(user)
+    user = for {key, val} <- user, into: %{}, do: {String.to_atom(key), val}
+    state = state |> Map.put(:user, user)
+    Logger.info "[DISCORD] Resumed with user #{inspect state[:user]}"
     # Our RESUME worked, so we're good
     send state[:parent], {:shard_status, :ready}
     {:ok, %{state | trace: data[:_trace]}}
@@ -259,8 +266,10 @@ defmodule Samantha.Discord do
     if data[:user_id] == state[:user][:id] do
       # If the user is us, *and* there's a channel_id field, *and* the channel
       # id isn't nil, then we're joining
+      Logger.info "[VOICE] Self CVSU: #{inspect data}"
       channel = data[:channel_id]
       unless is_nil channel do
+        Logger.info "[VOICE] Got cvsu!"
         GenServer.cast Samantha.Queue, {:push, "cvsu:#{inspect channel}", data |> Map.put(:shard_id, state[:shard_id])}
       end
     end
@@ -269,6 +278,7 @@ defmodule Samantha.Discord do
 
   def handle_event(:VOICE_SERVER_UPDATE, data, state) do
     guild_id = data[:guild_id]
+    Logger.info "[VOICE] Got gvsu!"
     GenServer.cast Samantha.Queue, {:push, "gvsu:#{inspect guild_id}", data}
     unhandled_event :VOICE_SERVER_UPDATE, data, state
   end
@@ -278,12 +288,12 @@ defmodule Samantha.Discord do
   end
 
   defp unhandled_event(event, data, state) do
-    Logger.debug "Got unhandled event: #{inspect event} with payload #{inspect data}"
+    Logger.debug "[DISCORD] Got unhandled event: #{inspect event} with payload #{inspect data}"
     # If this is a GUILD_CREATE event, check if we need to queue an OP8 
     # REQUEST_GUILD_MEMBERS
     if event == :GUILD_CREATE do
       if data[:member_count] > @large_threshold do
-        Logger.info "Requesting guild members for large guild #{data[:id]}"
+        Logger.info "[DISCORD] Requesting guild members for large guild #{data[:id]}"
         payload = payload_base @op_request_guild_members, %{"guild_id" => data[:id], "query" => "", "limit" => 0}, nil, nil
         GenServer.cast Samantha.Queue, {:push, "gateway", payload}
       end
@@ -301,7 +311,7 @@ defmodule Samantha.Discord do
   ###########
 
   defp identify(state) do
-    Logger.info "Identifying as [#{inspect state[:shard_id]}, #{inspect state[:shard_count]}]..."
+    Logger.info "[DISCORD] Identifying as [#{inspect state[:shard_id]}, #{inspect state[:shard_count]}]..."
     data = %{
       "token" => state[:token],
       "properties" => %{
@@ -314,13 +324,13 @@ defmodule Samantha.Discord do
       "shard" => [state[:shard_id], state[:shard_count]],
     }
     payload = binary_payload @op_identify, data
-    Logger.info "Done!"
+    Logger.info "[DISCORD] Done!"
     {:binary, payload}
   end
 
   defp resume(state) do
     seq = GenServer.call state[:parent], :seq
-    Logger.info "Resuming from seq #{inspect seq}"
+    Logger.info "[DISCORD] Resuming from seq #{inspect seq}"
     payload = binary_payload @op_resume, %{
       "session_id" => state[:session_id],
       "token" => state[:token],

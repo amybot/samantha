@@ -10,73 +10,62 @@ defmodule Samantha.Queue do
   When performing queue operations, specifying the `identifier` is a 
   requirement. 
 
-  This module is effectively just a somewhat higher-level wrapper over Erlang's
-  :queue module.
+  This module is effectively just a somewhat higher-level wrapper over a couple
+  Redis lists that we (ab)use as queues.
   """
 
   use GenServer
 
   require Logger
+  alias Lace.Redis
 
-  def start_link(_) do
-    GenServer.start_link __MODULE__, [], name: __MODULE__
+  def start_link(state) do
+    Logger.info "Starting link with queue with id #{inspect state[:id]}..."
+    GenServer.start_link __MODULE__, state, name: __MODULE__
   end
 
-  def init([]) do
-    state = %{
-      # Have the initial "global" gateway queue to start
-      "gateway" => :queue.new(),
-    }
-
+  def init(state) do
     {:ok, state}
   end
 
   def handle_cast({:clear, id}, state) do
-    state = Map.put state, id, :queue.new()
+    Logger.info "[#{id}] Clearing queue #{state[:id]}:#{inspect id}"
+    Redis.q ["DEL", "#{state[:id]}:#{inspect id}"]
     {:noreply, state}
   end
 
   def handle_cast({:push, id, val}, state) do
-    queue = if Map.has_key?(state, id) do
-        state[id]
-      else
-        :queue.new()
-      end
-    # Push at the tail of the queue
-    state = Map.put state, id, :queue.in(val, queue)
+    val = unless is_binary(val) do
+            val |> Poison.encode!
+          else
+            val
+          end
+    Logger.info "[#{id}] Pushing to #{state[:id]}:#{inspect id}: #{inspect val}"
+    Redis.q ["RPUSH", "#{state[:id]}:#{inspect id}", val]
     {:noreply, state}
   end
 
   def handle_call({:pop, id}, _from, state) do
-    queue = state[id]
-    unless is_nil queue do
-      # Pop from the head of the queue
-      {val, new_queue} = case :queue.out queue do
-        {{:value, val}, new_queue} -> {val, new_queue}
-        {:empty, new_queue} -> {nil, new_queue}
-      end
-      {:reply, val, %{state | id => new_queue}}
-    else
-      {:reply, nil, state}
+    {:ok, res} = Redis.q ["LPOP", "#{state[:id]}:#{inspect id}"]
+    ##Logger.info "[#{id}] Popping from#{state[:id]}:#{inspect id}: #{inspect res}"
+    case res do
+      :undefined -> {:reply, nil, state}
+      _ -> {:reply, res, state}
     end
   end
 
   def handle_call({:get_all, id}, _from, state) do
-    if Map.has_key?(state, id) do
-      queue = state[id]
-      list = :queue.to_list queue
-      {:reply, list, state}
-    else
-      {:reply, [], state}
+    {:ok, vals} = Redis.q ["LRANGE", "#{state[:id]}:#{inspect id}", 0, -1]
+    #Logger.info "[#{id}] Getting all from #{state[:id]}:#{inspect id}: #{inspect vals, pretty: true}"
+    case vals do
+      :undefined -> {:reply, [], state}
+      _ -> {:reply, vals, state}
     end
   end
 
   def handle_call({:length, id}, _from, state) do
-    queue = state[id]
-    unless is_nil queue do
-      {:reply, :queue.len(queue), state}
-    else
-      {:reply, -1, state}
-    end
+    {:ok, len} = Redis.q ["LLEN", "#{state[:id]}:#{inspect id}"]
+    Logger.info "[#{id}] Getting length of #{state[:id]}:#{inspect id}: #{inspect len}"
+    {:reply, len, state}
   end
 end

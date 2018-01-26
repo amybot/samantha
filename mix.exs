@@ -30,6 +30,7 @@ defmodule Samantha.Mixfile do
       {:poison, "~> 3.1"},
       {:sentry, "~> 6.0.5"},
       {:hammer, "~> 2.1.0"},
+      {:uuid, "~> 1.1"},
     ]
   end
 end
