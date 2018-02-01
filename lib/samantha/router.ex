@@ -47,6 +47,7 @@ defmodule Samantha.Router do
   #match _, do: send_resp(conn, 404, "no")
 
   defp try_get_voice(guild_id, channel_id) do
+    # TODO: Don't assume this is the correct shard
     payload = payload_base @op_voice_state_update, %{
                 "guild_id" => String.to_integer(guild_id),
                 "channel_id" => String.to_integer(channel_id),
