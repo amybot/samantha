@@ -5,6 +5,10 @@ defmodule Samantha.Application do
 
   def start(_type, _args) do
     Logger.info "[SHARD] Starting up!"
+    Logger.info "[SIGNAL] Swapping handlers..."
+    Samantha.Signal.swap_handlers()
+    Logger.info "[SHARD] Setting up :syn..."
+    :syn.init()
     # Get the shard count
     shard_count = unless is_nil System.get_env("SHARD_COUNT") do
       System.get_env("SHARD_COUNT") |> String.to_integer
@@ -14,20 +18,20 @@ defmodule Samantha.Application do
 
     children = [
       {Lace.Redis, %{
-          redis_ip: System.get_env("REDIS_IP"), redis_port: 6379, pool_size: 100, redis_pass: System.get_env("REDIS_PASS")
+          redis_ip: System.get_env("REDIS_IP"), redis_port: 6379, pool_size: 20, redis_pass: System.get_env("REDIS_PASS")
         }},
       {Samantha.Queue, %{id: UUID.uuid4()}},
-      {Lace, %{name: System.get_env("NODE_NAME"), group: System.get_env("GROUP_NAME"), cookie: System.get_env("COOKIE")}},
+      #{Lace, %{name: System.get_env("NODE_NAME"), group: System.get_env("GROUP_NAME"), cookie: System.get_env("COOKIE")}},
       # Shard API, for gateway messages and shit
       Plug.Adapters.Cowboy.child_spec(:http, Samantha.Router, [], [
         dispatch: dispatch(),
         port: get_port(),
       ]),
       # Start the main shard process
-      {Samantha.Shard, %{
-          token: System.get_env("BOT_TOKEN"), 
-          shard_count: shard_count
-        }},
+      #{Samantha.Shard, %{
+      #    token: System.get_env("BOT_TOKEN"), 
+      #    shard_count: shard_count
+      #  }},
     ]
 
     opts = [strategy: :one_for_one, name: Samantha.Supervisor]
@@ -35,9 +39,6 @@ defmodule Samantha.Application do
     app_sup = Supervisor.start_link(children, opts)
     
     Logger.info "[SHARD] Shard count: #{inspect shard_count}"
-
-    :timer.sleep 1000
-    Samantha.Shard.try_connect()
     Logger.info "[SHARD] Shard booted!"
 
     app_sup

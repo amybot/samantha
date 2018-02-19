@@ -18,6 +18,8 @@ defmodule Samantha.Shard do
       shard_status: :unknown,
     }
 
+    Process.send_after self(), {:try_connect, 1}, 1000
+
     {:ok, state}
   end
 
@@ -36,15 +38,6 @@ defmodule Samantha.Shard do
 
   def handle_call(:shard_id, _from, state) do
     {:reply, state[:shard_id], state}
-  end
-
-  def try_connect do
-    GenServer.cast Samantha.Shard, {:try_connect, 1}
-  end
-
-  def handle_cast({:try_connect, tries}, state) do
-    send self(), {:try_connect, tries}
-    {:noreply, state}
   end
 
   def handle_info({:try_connect, tries}, state) do

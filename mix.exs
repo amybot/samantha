@@ -31,6 +31,8 @@ defmodule Samantha.Mixfile do
       {:sentry, "~> 6.0.5"},
       {:hammer, "~> 2.1.0"},
       {:uuid, "~> 1.1"},
+      {:libcluster, "~> 2.1"},
+      {:syn, "~> 1.6"},
     ]
   end
 end

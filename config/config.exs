@@ -43,3 +43,20 @@ config :hammer,
   backend: {Hammer.Backend.ETS,
             [expiry_ms: 60_000 * 60 * 4,
              cleanup_interval_ms: 60_000 * 10]}
+
+# rancher clustering
+config :libcluster,
+  topologies: [
+    shard: [
+      strategy: Cluster.Strategy.Rancher,
+      config: [
+        node_basename: "samantha"
+      ]
+    ],
+    gateway: [
+      strategy: Cluster.Strategy.Rancher,
+      config: [
+        node_basename: "gateway"
+      ]
+    ]
+  ]
