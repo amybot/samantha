@@ -27,6 +27,7 @@ defmodule Samantha.Application do
         dispatch: dispatch(),
         port: get_port(),
       ]),
+      {Samantha.Cluster, %{}}
       # Start the main shard process
       #{Samantha.Shard, %{
       #    token: System.get_env("BOT_TOKEN"), 

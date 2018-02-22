@@ -51,12 +51,7 @@ config :libcluster,
       strategy: Cluster.Strategy.Rancher,
       config: [
         node_basename: "samantha"
-      ]
+      ],
+      child_spec: [id: :shard_cluster]
     ],
-    gateway: [
-      strategy: Cluster.Strategy.Rancher,
-      config: [
-        node_basename: "gateway"
-      ]
-    ]
   ]
