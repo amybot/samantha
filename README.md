@@ -2,6 +2,10 @@
 
 Distributed bot frontend for Discord.
 
+## Notice of deprecation
+
+This library/application has been deprecated. Please do not attempt to use it. 
+
 ## Configuration
 
 ```Bash
